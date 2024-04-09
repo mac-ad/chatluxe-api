@@ -48,16 +48,17 @@ export const updateFriendrequestController = asyncRequestHandler(
   async (req, res, next) => {
     const { friend_request_id, status } = req.body;
 
-    console.log(
-      new mongoose.Types.ObjectId(friend_request_id),
-      friend_request_id
-    );
-    friend_request_id;
     const request = await FriendRequest.findOne({
       _id: friend_request_id,
     });
 
     if (!request) throw new ApiError(404, "request not found");
+
+    if (!request.to.equals(req.user._id))
+      throw new ApiError(
+        401,
+        "You are not authorized to change this request status"
+      );
 
     if (request.status === "ACCEPTED")
       throw new ApiError(409, "request already accepted");
@@ -118,5 +119,26 @@ export const unfriendController = asyncRequestHandler(
     return res
       .status(200)
       .json(new ApiResponse(200, null, "Unfriended successfully"));
+  }
+);
+
+export const getAllFriendrequestController = asyncRequestHandler(
+  async (req, res, next) => {
+    const friendRequests = await FriendRequest.find({
+      $or: [{ to: req.user._id }],
+    }).populate({
+      path: "from",
+      select: "username avatar",
+    });
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          friendRequests,
+          "Friend requests retrived successfully"
+        )
+      );
   }
 );

@@ -4,11 +4,14 @@ import {
   updateFriendrequestController,
   sendFriendrequestController,
   unfriendController,
+  getAllFriendrequestController,
 } from "../controllers/friendship.controller.js";
 
 const router = Router();
 
-router.route("/").put(verifyJWT, unfriendController);
+// router.route("/").put(verifyJWT, unfriendController);
+
+router.route("/friend-request").get(verifyJWT, getAllFriendrequestController);
 
 router
   .route("/send-friend-request")

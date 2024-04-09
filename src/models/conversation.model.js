@@ -1,7 +1,15 @@
-const { Schema, default: mongoose } = require("mongoose");
+import mongoose, { Schema } from "mongoose";
 
 const conversationSchema = new Schema(
   {
+    // name: {
+    //   type: String,
+    //   required: true,
+    // },
+    isGroupConversation: {
+      type: Boolean,
+      default: false,
+    },
     participants: [
       {
         type: Schema.Types.ObjectId,
@@ -11,6 +19,10 @@ const conversationSchema = new Schema(
     lastMessage: {
       type: Schema.Types.ObjectId,
       ref: "Message",
+    },
+    admin: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
     },
   },
   {
