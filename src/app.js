@@ -14,6 +14,8 @@ app.use(express.urlencoded({ extended: true, limit: "16kb" }));
 
 app.use(cookieParser());
 
+app.get("/", (req, res) => res.send("hey"));
+
 app.use("/api/users", userRoutes);
 app.use("/api/friendship", friendshipRoutes);
 app.use("/api/conversations", conversationRoutes);
