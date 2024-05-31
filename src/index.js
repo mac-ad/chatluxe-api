@@ -1,12 +1,13 @@
 import { app } from "./app.js";
 import { connectDB } from "./db/index.js";
 import dotenv from "dotenv";
+import { Server } from "socket.io";
 
 dotenv.config({
   path: "./.env",
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8000;
 
 const startServer = () => {
   app.listen(PORT, () => {

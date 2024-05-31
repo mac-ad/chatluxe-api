@@ -13,12 +13,11 @@ const generateAccessAndRefreshToken = async (userId) => {
   try {
     const user = await User.findById(userId);
 
-    console.log("user===", user);
-
     const accessToken = user.generateAccessToken();
     const refreshToken = user.generateRefreshToken();
 
     user.refreshToken = refreshToken;
+    user.accessToken = accessToken;
 
     user.save({ validateBeforeSave: false });
 
@@ -30,6 +29,7 @@ const generateAccessAndRefreshToken = async (userId) => {
 
 export const registerUser = asyncRequestHandler(async (req, res, next) => {
   const { email, username } = req.body;
+  console.log("req.body", req.body);
 
   const existedUser = await User.findOne({
     $or: [{ username }, { email }],
@@ -139,13 +139,21 @@ export const loginUser = asyncRequestHandler(async (req, res, next) => {
   );
 
   const loggedInUser = await User.findById(user._id).select(
-    "-password -refreshToken -emailVerificationToken -emailVerificationExpiry"
+    "-password -refreshToken -emailVerificationToken -emailVerificationExpiry -accessToken"
   );
 
   const options = {
-    httpOnly: true,
+    httpOnly: false,
     secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    // maxAge: 1000 * 60 * 60, // one hour in milliseconds
+    withCredentials: true,
   };
+
+  res.set({
+    "access-control-allow-credentials": true,
+    "access-control-allow-origin": "http://localhost:3000",
+  });
 
   return res
     .status(200)
@@ -172,6 +180,7 @@ export const logoutUser = asyncRequestHandler(async (req, res, next) => {
     {
       $set: {
         refreshToken: null,
+        accessToken: null,
       },
     },
     {
@@ -232,7 +241,9 @@ export const resendEmailVerification = asyncRequestHandler(
 export const getLoggedInUser = asyncRequestHandler(async (req, res, next) => {
   console.log("getting logged in user");
 
-  const user = await User.findById(req.user._id).select("-refreshToken ");
+  const user = await User.findById(req.user._id).select(
+    "-refreshToken -accessToken"
+  );
 
   console.log("user = ", user);
 
@@ -259,4 +270,86 @@ export const deleteUser = asyncRequestHandler(async (req, res, next) => {
       "user deleted successfully"
     )
   );
+});
+
+export const refreshToken = asyncRequestHandler(async (req, res, next) => {
+  console.log("refreshing token");
+
+  const { refreshToken } = req.body;
+
+  if (!refreshToken)
+    return res
+      .status(400)
+      .json(new ApiResponse(400, null, "No refresh Token sent!"));
+
+  // find user with the refresh token
+  const user = await User.findOne({ refreshToken });
+
+  if (!user)
+    return res
+      .status(404)
+      .json(new ApiResponse(404, null, "Invalid refresh Token!"));
+
+  // if user is found with that refresh token then generate new access token and send
+  const { accessToken, refreshToken: newRefreshToken } =
+    await generateAccessAndRefreshToken(user?._id);
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        refreshToken: newRefreshToken,
+        accessToken,
+      },
+      "Token refreshed successfully"
+    )
+  );
+});
+
+export const getAllUsers = asyncRequestHandler(async (req, res, next) => {
+  // get all users except for logged in user
+  // find all friend requests where from or to has currently logged in user
+  // append friendship_status to each user on the basis of friend requests
+
+  // const users = await User.find({
+  //   _id: {
+  //     $ne: req.user._id,
+  //   },
+  // }).select("-accessToken -refreshToken");
+
+  const users = await User.aggregate([
+    {
+      $match: {
+        _id: {
+          $ne: req.user._id,
+        },
+      },
+    },
+    {
+      $project: {
+        username: 1,
+        avatar: 1,
+      },
+    },
+    // {
+    //   $lookup: {
+    //     from: "FriendRequest",
+    //     localField: "_id",
+    //     foreignField: "to",
+    //     as: "requested_by",
+    //   },
+    // },
+    // {
+    //   $lookup: {
+    //     from: "FriendRequest",
+    //     localField: "_id",
+    //     foreignField: "from",
+    //     as: "requested_to",
+    //   },
+    // },
+  ]);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, users, "Users fetched successfully"));
 });

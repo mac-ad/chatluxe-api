@@ -15,13 +15,17 @@ export const errorHandler = (err, req, res, next) => {
 
     // set a message from native Error instance or a custom one
     const message = error.message || "Something went wrong";
-    error = new ApiError(statusCode, message, error?.errors || [], err.stack);
+    error = new ApiError(
+      statusCode,
+      message
+      // error?.errors || []
+    );
   }
 
   const response = {
     ...error,
     message: error.message,
-    ...(process.env.NODE_ENV === "development" ? { stack: error.stack } : {}), // Error stack traces should be visible in development for debugging
+    // ...(process.env.NODE_ENV === "development" ? { stack: error.stack } : {}), // Error stack traces should be visible in development for debugging
   };
 
   return res.status(error.statusCode).json(response);

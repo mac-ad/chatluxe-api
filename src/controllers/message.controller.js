@@ -75,6 +75,8 @@ export const sendMessageController = asyncRequestHandler(
       conversation: selectedConversation._id,
     });
 
+    // add last message to conversation model
+
     // format message
     message = await Message.aggregate([
       {
@@ -85,6 +87,9 @@ export const sendMessageController = asyncRequestHandler(
       ...messageCommonAggregator(),
     ]);
 
+    selectedConversation.lastMessage = message._id;
+    selectedConversation.save();
+    
     return res
       .status(201)
       .json(new ApiResponse(201, message, "Message sent successfully"));

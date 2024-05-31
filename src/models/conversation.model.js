@@ -2,10 +2,10 @@ import mongoose, { Schema } from "mongoose";
 
 const conversationSchema = new Schema(
   {
-    // name: {
-    //   type: String,
-    //   required: true,
-    // },
+    name: {
+      type: String,
+      required: false,
+    },
     isGroupConversation: {
       type: Boolean,
       default: false,

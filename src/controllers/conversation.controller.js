@@ -22,21 +22,226 @@ const conversationCommonAggregator = () => [
       ],
     },
   },
+  {
+    $lookup: {
+      from: "users",
+      foreignField: "_id",
+      localField: "admin",
+      as: "admin",
+      pipeline: [
+        {
+          $project: {
+            username: 1,
+            avatar: 1,
+          },
+        },
+      ],
+    },
+  },
+  {
+    $unwind: "$admin",
+  },
+];
+
+const getAllConversationsAggregator = (req) => [
+  // depending on type of conversation do different things
+  {
+    $facet: {
+      oneToOne: [
+        {
+          $match: { isGroupConversation: false },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "participants",
+            foreignField: "_id",
+            as: "recieverDetail",
+            pipeline: [
+              {
+                $project: {
+                  avatar: 1,
+                  username: 1,
+                },
+              },
+            ],
+          },
+        },
+        {
+          $unwind: "$recieverDetail",
+        },
+        {
+          $match: {
+            "recieverDetail._id": {
+              $ne: req.user._id,
+            },
+          },
+        },
+      ],
+      group: [
+        // group
+        {
+          $match: { isGroupConversation: true },
+        },
+      ],
+    },
+  },
+  // {
+  //   $unwind: "$facet",
+  // },
+  // {
+  //   $project: {
+  //     conversations: {
+  //       $concatArrays: [
+  //         {
+  //           $ifNull: ["$facet.oneToOne", []],
+  //         },
+  //         {
+  //           $ifNull: ["$facet.group", []],
+  //         },
+  //       ],
+  //     },
+  //   },
+  // },
+];
+
+const groupConversationDetailAggregator = (req) => [
+  {
+    $lookup: {
+      from: "users",
+      localField: "admin",
+      foreignField: "_id",
+      as: "admin",
+      pipeline: [
+        {
+          $project: {
+            username: 1,
+            avatar: 1,
+          },
+        },
+      ],
+    },
+  },
+  {
+    $unwind: "$admin",
+  },
+  {
+    $lookup: {
+      from: "users",
+      localField: "participants",
+      foreignField: "_id",
+      as: "participants",
+      pipeline: [
+        {
+          $project: {
+            username: 1,
+            avatar: 1,
+          },
+        },
+      ],
+    },
+  },
+
+  // remove self as participant
+];
+
+const oneToOneConversationDetailAggregator = (req) => [
+  {
+    $lookup: {
+      from: "users",
+      localField: "participants",
+      foreignField: "_id",
+      as: "recieverDetail",
+      pipeline: [
+        {
+          $project: {
+            username: 1,
+            avatar: 1,
+          },
+        },
+      ],
+    },
+  },
+  {
+    $unwind: "$recieverDetail",
+  },
+  {
+    $match: {
+      "recieverDetail._id": {
+        $ne: req.user._id,
+      },
+    },
+  },
+  {
+    $project: {
+      participants: 0,
+    },
+  },
 ];
 
 export const getAllConversationsController = asyncRequestHandler(
   async (req, res, next) => {
-    const chats = await Conversation.find({
-      participants: {
-        $elemMatch: {
-          $eq: req.user._id,
+    const chats = await Conversation.aggregate([
+      {
+        $match: {
+          participants: { $elemMatch: { $eq: req.user._id } },
         },
       },
-    });
+      ...getAllConversationsAggregator(req),
+      // {
+      //   $lookup: {
+      //     from: "users",
+      //     localField: "participants",
+      //     foreignField: "_id",
+      //     as: "recieverDetail",
+      //     pipeline: [
+      //       {
+      //         $project: {
+      //           avatar: 1,
+      //           username: 1,
+      //         },
+      //       },
+      //     ],
+      //   },
+      // },
+      // {
+      //   $unwind: "$recieverDetail",
+      // },
+      // {
+      //   $match: {
+      //     "recieverDetail._id": { $ne: req.user._id },
+      //   },
+      // },
+    ]);
+
+    // find all conversation that current logged in user has
+    // admin
+    // last message
+    // convWith or name (in case of one to one it is the name of reciever user)
+
+    // const chats = await Conversation.aggregate([
+    //   {
+    //     $match : {
+    //       participants : {
+    //         $elemMatch : {
+    //           $eq : req.user._id
+    //         }
+    //       }
+    //     }
+    //   },
+    //   {
+    //     $lookup : {
+    //       from : "users",
+    //       localField :
+    //     }
+    //   }
+    // ])
 
     res
       .status(200)
-      .json(new ApiResponse(200, chats, "conversations retrived successfully"));
+      .json(
+        new ApiResponse(200, chats[0], "conversations retrived successfully")
+      );
   }
 );
 
@@ -76,7 +281,14 @@ export const createOrGetOneToOneController = asyncRequestHandler(
     ]);
 
     // conversation exists or not conditional
-    if (conversations.length)
+    if (conversations.length) {
+      // populate admin
+
+      // for (const conversation in conversations) {
+      //   conversation.populate("admin").execPopulate();
+      // }
+      console.log("conversations = ", conversations);
+
       return res
         .status(200)
         .json(
@@ -86,6 +298,7 @@ export const createOrGetOneToOneController = asyncRequestHandler(
             "Conversation fetched successfully"
           )
         );
+    }
 
     // create new conversaation since doesnot exists
     const newConv = await Conversation.create({
@@ -100,14 +313,17 @@ export const createOrGetOneToOneController = asyncRequestHandler(
           _id: newConv._id,
         },
       },
+      ...conversationCommonAggregator(),
     ]);
-
-    console.log(createdConv);
 
     return res
       .status(200)
       .json(
-        new ApiResponse(200, conversations, "Conversation created Successfully")
+        new ApiResponse(
+          200,
+          createdConv[0],
+          "Conversation created Successfully"
+        )
       );
   }
 );
@@ -150,6 +366,73 @@ export const createAGroupController = asyncRequestHandler(
           200,
           conversation[0],
           "Group conversation created successfully"
+        )
+      );
+  }
+);
+
+export const deleteConversationController = asyncRequestHandler(
+  async (req, res, next) => {
+    const convId = req.params.conversationId;
+
+    const conv = await Conversation.findById(convId);
+
+    if (!conv) throw new ApiError(404, "Conversation not found!");
+
+    const authorized = conv.participants.includes(req.user._id);
+
+    if (!authorized) throw new ApiError(401, "Not authorized");
+
+    const r = await Conversation.deleteOne({ _id: convId });
+    if (r.deletedCount !== 1)
+      throw new ApiError(400, "Error occured while deleting");
+    return res
+      .status(200)
+      .json(new ApiResponse(200, null, " Conversation deleted successfully"));
+  }
+);
+
+export const getGroupConversationDetail = asyncRequestHandler(
+  async (req, res, next) => {
+    const { conversationId } = req.params;
+
+    console.log("conv id", conversationId);
+
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation)
+      return res
+        .status(404)
+        .json(new ApiResponse(404, null, "Conversation not found"));
+
+    const ownConversation = conversation.participants.includes(req.user._id);
+
+    if (!ownConversation)
+      return res
+        .status(401)
+        .json(new ApiResponse(401, null, "Not your conversation to view"));
+
+    const conversationDetail = await Conversation.aggregate([
+      {
+        $match: {
+          _id: {
+            $eq: new mongoose.Types.ObjectId(conversationId),
+          },
+        },
+      },
+
+      ...(conversation.isGroupConversation
+        ? groupConversationDetailAggregator(req)
+        : oneToOneConversationDetailAggregator(req)),
+    ]);
+
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          conversationDetail[0],
+          "Conversation fetched successfully"
         )
       );
   }

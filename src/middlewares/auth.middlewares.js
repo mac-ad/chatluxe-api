@@ -4,12 +4,14 @@ import { asyncRequestHandler } from "../utils/asyncHandler.js";
 import { User } from "../models/user.model.js";
 
 export const verifyJWT = asyncRequestHandler(async (req, res, next) => {
+  // console.log("req", req.cookies, req.header("Cookie"));
   const token =
-    req.cookies?.accessToken ||
-    //  req.header("Cookie")?.replace("Bearer", "") ||
-    req.header("Authorization")?.replace("Bearer", "");
+    req.cookies?.accessToken || req.header("Authorization")?.split(" ")[1];
+  // req.header("Authorization")?.replace("Bearer", "");
 
   if (!token) throw new ApiError(401, "Unauthorized request");
+
+  console.log("token = ", token);
 
   try {
     const decodedToken = jwt.verify(token, "accesstokensecret");

@@ -41,6 +41,9 @@ const userSchema = new Schema(
     refreshToken: {
       type: String,
     },
+    accessToken: {
+      type: String,
+    },
     forgotPasswordToken: {
       type: String,
     },
@@ -76,6 +79,7 @@ userSchema.methods.generateAccessToken = function () {
     "accesstokensecret",
     {
       expiresIn: 1 * 24 * 60 * 60,
+      // expiresIn: 20, // 20 seconds
     }
   );
 };
