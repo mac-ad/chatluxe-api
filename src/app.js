@@ -14,6 +14,12 @@ import http from "http";
 import { initializeSocketIo } from "./socket/index.js";
 import { Server } from "socket.io";
 
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: "./.env",
+});
+
 export const __filename = import.meta.url;
 export const __dirname = path.dirname(__filename);
 
@@ -23,10 +29,12 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: `${process.env.CORS_ALLOW}`,
     credentials: true,
   },
 });
+
+console.log([process.env.CORS_ALLOW]);
 
 // to use the instance later maybe
 // as app.get("io")
@@ -34,7 +42,7 @@ app.set("io", io);
 
 app.use(
   cors({
-    origin: "*",
+    origin: `${process.env.CORS_ALLOW}`,
     credentials: true,
     // credentials: true,
     // withCredentials: true,
