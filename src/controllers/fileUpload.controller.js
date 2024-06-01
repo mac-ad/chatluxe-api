@@ -14,11 +14,13 @@ const generateTempFilename = (uploadId, chunkNumber) => {
 
 export const uploadSessionController = asyncRequestHandler(
   async (req, res, next) => {
+    // get filename and totalsize of file to be uploaded
     const { filename, totalSize } = req.body;
 
     // generate unique identifier for a session
     const uploadId = generateRandomUUID();
 
+    // create new session
     const newSession = new UploadSession({
       filename,
       totalSize,
@@ -28,6 +30,8 @@ export const uploadSessionController = asyncRequestHandler(
 
     await newSession.save();
 
+    // return uploadId which is a session Id for uploading
+    // all chunks of current file
     return res
       .status(200)
       .json(new ApiResponse(200, { uploadId }, "Upload session established"));
@@ -54,27 +58,9 @@ export const uploadChunkController = asyncRequestHandler(
 
       const filename = generateTempFilename(uploadId, chunkNumber);
       const filePath = path.join(__dirname, "/uploads/", filename);
-
-      // console.log(filePath);
-
-      // if (!checkPermission(filePath, Permissions.FILE_EXIST)) {
-      //   console.log("no permission");
-      //   return res
-      //     .status(401)
-      //     .json(
-      //       new ApiResponse(401, null, "Write permission is not available")
-      //     );
-      // } else {
-      //   console.log("permission");
-      // }
-
       await fs.promises.writeFile(`./uploads/tmp/${filename}`, chunkData);
-
       session.uploadedChunks.push(chunkNumber);
       await session.save();
-
-      console.log(session);
-
       return res
         .status(200)
         .json(new ApiResponse(200, null, "Chunk uploaded successfully"));
@@ -84,9 +70,6 @@ export const uploadChunkController = asyncRequestHandler(
         .status(400)
         .json(new ApiResponse(400, null, "Error occured uploading a chunk"));
     }
-    return res
-      .status(200)
-      .json(new ApiResponse(200, null, "Chunk uploaded successfully"));
   }
 );
 

@@ -1,4 +1,4 @@
-import { app } from "./app.js";
+import { app, server } from "./app.js";
 import { connectDB } from "./db/index.js";
 import dotenv from "dotenv";
 import { Server } from "socket.io";
@@ -10,7 +10,7 @@ dotenv.config({
 const PORT = process.env.PORT || 8000;
 
 const startServer = () => {
-  app.listen(PORT, () => {
+  server.listen(PORT, () => {
     console.log("server listening to port ", PORT);
   });
 };

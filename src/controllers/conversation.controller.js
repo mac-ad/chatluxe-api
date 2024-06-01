@@ -1,11 +1,14 @@
 import mongoose from "mongoose";
 import { Conversation } from "../models/conversation.model.js";
+import { Message } from "../models/message.model.js";
 import { asyncRequestHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { User } from "../models/user.model.js";
 import { ApiError } from "../utils/ApiError.js";
+import { emitSocketEvent } from "../socket/index.js";
+import { ChatEventEnum } from "../constants.js";
 
-const conversationCommonAggregator = () => [
+export const conversationCommonAggregator = () => [
   {
     $lookup: {
       from: "users",
@@ -41,6 +44,91 @@ const conversationCommonAggregator = () => [
   {
     $unwind: "$admin",
   },
+  // expand last message
+  {
+    $lookup: {
+      from: "messages",
+      foreignField: "_id",
+      localField: "lastMessage",
+      as: "lastMessage",
+      pipeline: [
+        {
+          $project: {
+            text: 1,
+            sender: 1,
+            created_at: 1,
+          },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "sender",
+            foreignField: "_id",
+            as: "sender",
+            pipeline: [
+              {
+                $project: {
+                  username: 1,
+                  avatar: 1,
+                },
+              },
+            ],
+          },
+        },
+        {
+          $unwind: "$sender",
+        },
+      ],
+    },
+  },
+  {
+    $unwind: "$lastMessage",
+  },
+];
+
+export const conversationOneToOneAggregator = (req) => [
+  {
+    $lookup: {
+      from: "users",
+      foreignField: "_id",
+      localField: "participants",
+      as: "recieverDetail",
+      pipeline: [
+        {
+          $project: {
+            username: 1,
+            avatar: 1,
+          },
+        },
+      ],
+    },
+  },
+  {
+    $unwind: "$recieverDetail",
+  },
+  {
+    $match: {
+      "recieverDetail._id": {
+        $eq: req.user._id,
+      },
+    },
+  },
+  {
+    $lookup: {
+      from: "users",
+      foreignField: "_id",
+      localField: "admin",
+      as: "admin",
+      pipeline: [
+        {
+          $project: {
+            username: 1,
+            avatar: 1,
+          },
+        },
+      ],
+    },
+  },
 ];
 
 const getAllConversationsAggregator = (req) => [
@@ -50,6 +138,44 @@ const getAllConversationsAggregator = (req) => [
       oneToOne: [
         {
           $match: { isGroupConversation: false },
+        },
+        {
+          $lookup: {
+            from: "messages",
+            localField: "lastMessage",
+            foreignField: "_id",
+            as: "lastMessage",
+            pipeline: [
+              {
+                $project: {
+                  text: 1,
+                  sender: 1,
+                },
+              },
+              {
+                $lookup: {
+                  from: "users",
+                  localField: "sender",
+                  foreignField: "_id",
+                  as: "sender",
+                  pipeline: [
+                    {
+                      $project: {
+                        username: 1,
+                        avatar: 1,
+                      },
+                    },
+                  ],
+                },
+              },
+              {
+                $unwind: "$sender",
+              },
+            ],
+          },
+        },
+        {
+          $unwind: "$lastMessage",
         },
         {
           $lookup: {
@@ -82,6 +208,45 @@ const getAllConversationsAggregator = (req) => [
         // group
         {
           $match: { isGroupConversation: true },
+        },
+        {
+          $lookup: {
+            from: "messages",
+            localField: "lastMessage",
+            foreignField: "_id",
+            as: "lastMessage",
+            pipeline: [
+              {
+                $project: {
+                  text: 1,
+                  sender: 1,
+                },
+              },
+              // populating sender
+              {
+                $lookup: {
+                  from: "users",
+                  localField: "sender",
+                  foreignField: "_id",
+                  as: "sender",
+                  pipeline: [
+                    {
+                      $project: {
+                        username: 1,
+                        avatar: 1,
+                      },
+                    },
+                  ],
+                },
+              },
+              {
+                $unwind: "$sender",
+              },
+            ],
+          },
+        },
+        {
+          $unwind: "$lastMessage",
         },
       ],
     },
@@ -187,7 +352,9 @@ export const getAllConversationsController = asyncRequestHandler(
           participants: { $elemMatch: { $eq: req.user._id } },
         },
       },
-      ...getAllConversationsAggregator(req),
+
+      ...conversationCommonAggregator(),
+      // ...getAllConversationsAggregator(req),
       // {
       //   $lookup: {
       //     from: "users",
@@ -239,9 +406,7 @@ export const getAllConversationsController = asyncRequestHandler(
 
     res
       .status(200)
-      .json(
-        new ApiResponse(200, chats[0], "conversations retrived successfully")
-      );
+      .json(new ApiResponse(200, chats, "conversations retrived successfully"));
   }
 );
 
@@ -276,8 +441,10 @@ export const createOrGetOneToOneController = asyncRequestHandler(
           ],
         },
       },
-      // common aggrgation
       ...conversationCommonAggregator(),
+      // common aggrgation
+      // ...conversationOneToOneAggregator(req),
+      // ...conversationCommonAggregator(req)
     ]);
 
     // conversation exists or not conditional
@@ -300,11 +467,18 @@ export const createOrGetOneToOneController = asyncRequestHandler(
         );
     }
 
+    // create a message to add as last Messagae
+    const sampleMsg = await Message.create({
+      text: `Say hi to ${reciever.username}`,
+      sender: req.user._id,
+    });
+
     // create new conversaation since doesnot exists
     const newConv = await Conversation.create({
       name: "one to one",
       participants: [req.user._id, new mongoose.Types.ObjectId(recieverId)],
       admin: req.user._id,
+      lastMessage: sampleMsg._id,
     });
 
     const createdConv = await Conversation.aggregate([
@@ -314,13 +488,27 @@ export const createOrGetOneToOneController = asyncRequestHandler(
         },
       },
       ...conversationCommonAggregator(),
+      // ...conversationOneToOneAggregator(req),
+      // ...conversationCommonAggregator
     ]);
 
+    // emit that a conversation is created to other participants of that conversation
+    createdConv[0].participants.forEach((participant) => {
+      if (participant._id.toString() === req.user._id.toString()) return;
+
+      emitSocketEvent(
+        req,
+        participant._id.toString(),
+        ChatEventEnum.NEW_CHAT,
+        createdConv[0]
+      );
+    });
+
     return res
-      .status(200)
+      .status(201)
       .json(
         new ApiResponse(
-          200,
+          201,
           createdConv[0],
           "Conversation created Successfully"
         )
@@ -340,24 +528,53 @@ export const createAGroupController = asyncRequestHandler(
     if (members.length < 3)
       throw new ApiError(400, "Seems like you have passed duplicate users");
 
+    // const lastMessage = await Message.create({
+    //   text: `Say hi to ${}`
+    // })
+
+    // create a message to add as last Messagae
+    const sampleMsg = await Message.create({
+      text: `Say hi to group members`,
+      sender: req.user._id,
+    });
+
     const groupConversation = await Conversation.create({
       name,
       isGroupConversation: true,
       participants: members,
       admin: req.user._id,
+      lastMessage: sampleMsg._id,
     });
+
+    console.log("groupconv = ", groupConversation);
 
     // structure conversation
     const conversation = await Conversation.aggregate([
       {
         $match: {
-          _id: groupConversation._id,
+          _id: {
+            $eq: groupConversation._id,
+          },
         },
       },
       ...conversationCommonAggregator(),
     ]);
 
     if (!conversation) throw new ApiError(500, "Internal server error");
+    console.log("conversation = ", conversation);
+
+    // emit socket event to all participants
+    conversation[0].participants.forEach((participant) => {
+      if (participant._id.toString() === req.user._id.toString()) return;
+
+      // emit
+      // emitSocketEvent(
+      //   req,
+      //   participant._id.toString(),
+      //   ChatEventEnum.NEW_CHAT,
+      //   conversation[0]
+      // );
+    });
 
     return res
       .status(200)
@@ -392,7 +609,7 @@ export const deleteConversationController = asyncRequestHandler(
   }
 );
 
-export const getGroupConversationDetail = asyncRequestHandler(
+export const getConversationDetail = asyncRequestHandler(
   async (req, res, next) => {
     const { conversationId } = req.params;
 
@@ -421,9 +638,10 @@ export const getGroupConversationDetail = asyncRequestHandler(
         },
       },
 
-      ...(conversation.isGroupConversation
-        ? groupConversationDetailAggregator(req)
-        : oneToOneConversationDetailAggregator(req)),
+      ...conversationCommonAggregator(),
+      // ...(conversation.isGroupConversation
+      //   ? groupConversationDetailAggregator(req)
+      //   : oneToOneConversationDetailAggregator(req)),
     ]);
 
     return res

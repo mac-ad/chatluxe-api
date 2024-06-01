@@ -5,6 +5,9 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { Conversation } from "../models/conversation.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
+import { emitSocketEvent } from "../socket/index.js";
+import { ChatEventEnum } from "../constants.js";
+import { conversationCommonAggregator } from "./conversation.controller.js";
 
 const messageCommonAggregator = () => [
   {
@@ -23,10 +26,43 @@ const messageCommonAggregator = () => [
       ],
     },
   },
+  // {
+  //   $addFields: {
+  //     sender: {
+  //       $first: "$sender",
+  //     },
+  //   },
+  // },
   {
-    $addFields: {
-      sender: {
-        $first: "$sender",
+    $unwind: "$sender",
+  },
+];
+
+// reciever detail appender for one to one
+const recieverDetailAppender = (req) => [
+  {
+    $lookup: {
+      from: "users",
+      localField: "participants",
+      foreignField: "_id",
+      as: "recieverDetail",
+      pipeline: [
+        {
+          $project: {
+            avatar: 1,
+            username: 1,
+          },
+        },
+      ],
+    },
+  },
+  {
+    $unwind: "$recieverDetail",
+  },
+  {
+    $match: {
+      "recieverDetail._id": {
+        $ne: req.user._id,
       },
     },
   },
@@ -87,12 +123,91 @@ export const sendMessageController = asyncRequestHandler(
       ...messageCommonAggregator(),
     ]);
 
-    selectedConversation.lastMessage = message._id;
+    selectedConversation.lastMessage = message[0]._id;
     selectedConversation.save();
-    
+
+    // aggregate get detail of a conversation
+    const updatedConv = await Conversation.aggregate([
+      {
+        $match: {
+          _id: {
+            $eq: selectedConversation._id,
+          },
+        },
+      },
+      // expand lastMessage
+      // {
+      //   $lookup: {
+      //     from: "messages",
+      //     localField: "lastMessage",
+      //     foreignField: "_id",
+      //     as: "lastMessage",
+      //     pipeline: [
+      //       {
+      //         $project: {
+      //           text: 1,
+      //           sender: 1,
+      //         },
+      //       },
+      //       // populating sender
+      //       {
+      //         $lookup: {
+      //           from: "users",
+      //           localField: "sender",
+      //           foreignField: "_id",
+      //           as: "sender",
+      //           pipeline: [
+      //             {
+      //               $project: {
+      //                 username: 1,
+      //                 avatar: 1,
+      //               },
+      //             },
+      //           ],
+      //         },
+      //       },
+      //       {
+      //         $unwind: "$sender",
+      //       },
+      //     ],
+      //   },
+      // },
+      // {
+      //   $unwind: "$lastMessage",
+      // },
+
+      // expand participants
+      ...conversationCommonAggregator(),
+
+      // for one to one append recieverDetail
+
+      // for group no need
+    ]);
+
+    // emit message sent event to all the participants
+    selectedConversation.participants.forEach((participant) => {
+      // emit conversation Update event
+      emitSocketEvent(
+        req,
+        participant._id.toString(),
+        ChatEventEnum.CHAT_UPDATE,
+        updatedConv[0]
+      );
+
+      // dont emit to the self
+      if (participant._id.toString() === req.user._id.toString()) return;
+      // emit to others in conversation
+      emitSocketEvent(
+        req,
+        participant._id.toString(),
+        ChatEventEnum.MESSAGE_RECIEVED,
+        message[0]
+      );
+    });
+
     return res
       .status(201)
-      .json(new ApiResponse(201, message, "Message sent successfully"));
+      .json(new ApiResponse(201, message[0], "Message sent successfully"));
   }
 );
 

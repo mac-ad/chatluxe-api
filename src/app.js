@@ -22,10 +22,10 @@ export const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-  // cors: {
-  //   origin: "*",
-  //   credentials: true,
-  // },
+  cors: {
+    origin: "http://localhost:3000",
+    credentials: true,
+  },
 });
 
 // to use the instance later maybe
@@ -34,12 +34,13 @@ app.set("io", io);
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: "*",
     credentials: true,
     // credentials: true,
     // withCredentials: true,
   })
 );
+
 app.use(cookieParser()); //to parse request cookies
 
 // app.use(cors(corsOptions));
@@ -66,3 +67,5 @@ app.use("/api/upload", fileUploadRoutes);
 app.use(errorHandler);
 
 initializeSocketIo(io);
+
+export { server };

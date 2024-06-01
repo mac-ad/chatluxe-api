@@ -5,7 +5,7 @@ import {
   createOrGetOneToOneController,
   createAGroupController,
   deleteConversationController,
-  getGroupConversationDetail,
+  getConversationDetail,
 } from "../controllers/conversation.controller.js";
 
 const router = Router();
@@ -21,6 +21,6 @@ router.route("/group").post(createAGroupController);
 router
   .route("/:conversationId")
   .delete(deleteConversationController)
-  .get(getGroupConversationDetail);
+  .get(getConversationDetail);
 
 export default router;

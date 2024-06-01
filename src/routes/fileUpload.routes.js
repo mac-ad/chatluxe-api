@@ -28,7 +28,6 @@ router.post(
   upload.single("chunk"),
   uploadChunkController
 );
-
 router.post("/upload-commit/:uploadId", uploadCommitController);
 
 // router.post(upload.single("file"), fileUploadController);
