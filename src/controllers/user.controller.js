@@ -150,11 +150,6 @@ export const loginUser = asyncRequestHandler(async (req, res, next) => {
     withCredentials: true,
   };
 
-  res.set({
-    "access-control-allow-credentials": true,
-    "access-control-allow-origin": "http://localhost:3000",
-  });
-
   return res
     .status(200)
     .cookie("accessToken", accessToken, options)
